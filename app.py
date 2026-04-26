@@ -4,17 +4,15 @@ from datetime import datetime
 import os
 
 app = Flask(__name__)
-# Render persistent disk এ save হবে, local এ current folder এ
+
 DB = os.path.join(os.environ.get("DB_PATH", "."), "jobs.db")
 
-
 # ─────────────────────────────────────────
-# DATABASE  (auto-creates + auto-migrates)
+# DATABASE
 # ─────────────────────────────────────────
 def init_db():
     conn = sqlite3.connect(DB)
     c = conn.cursor()
-
     c.execute("""
         CREATE TABLE IF NOT EXISTS jobs (
             id         INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -25,37 +23,29 @@ def init_db():
             updated_at TEXT
         )
     """)
-
-    # Auto-migrate: add updated_at column if an old DB is missing it
     cols = [row[1] for row in c.execute("PRAGMA table_info(jobs)")]
     if "updated_at" not in cols:
-        print("[DB] Migrating: adding 'updated_at' column …")
+        print("[DB] Migrating: adding 'updated_at' column ...")
         c.execute("ALTER TABLE jobs ADD COLUMN updated_at TEXT")
-
     conn.commit()
     conn.close()
-    print("[DB] Ready ✓")
-
+    print("[DB] Ready")
 
 def get_db():
     conn = sqlite3.connect(DB)
     conn.row_factory = sqlite3.Row
     return conn
 
-
 # ─────────────────────────────────────────
 # ROUTES
 # ─────────────────────────────────────────
-
 @app.route("/")
 def home():
     return render_template("index.html")
 
-
 @app.route("/latest")
 def latest():
     return render_template("latest.html")
-
 
 @app.route("/api/latest")
 def api_latest():
@@ -65,7 +55,6 @@ def api_latest():
     ).fetchall()
     conn.close()
     return jsonify([dict(r) for r in rows])
-
 
 @app.route("/save", methods=["POST"])
 def save_job():
@@ -97,7 +86,6 @@ def save_job():
 
     print(f"[SAVED] {job_name}  |  pos={position}  |  avail={available}  |  {now}")
     return jsonify({"status": "saved", "job_name": job_name})
-
 
 # ─────────────────────────────────────────
 # STARTUP
