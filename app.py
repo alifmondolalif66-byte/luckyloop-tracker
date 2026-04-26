@@ -22,6 +22,14 @@ def init_db():
             updated_at TEXT
         )
     """)
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS scraper_status (
+            id         INTEGER PRIMARY KEY,
+            status     TEXT,
+            message    TEXT,
+            updated_at TEXT
+        )
+    """)
     cols = [row[1] for row in c.execute("PRAGMA table_info(jobs)")]
     if "updated_at" not in cols:
         c.execute("ALTER TABLE jobs ADD COLUMN updated_at TEXT")
@@ -48,8 +56,46 @@ def api_latest():
     rows = conn.execute(
         "SELECT * FROM jobs ORDER BY updated_at DESC"
     ).fetchall()
+    
+    # scraper status
+    status_row = conn.execute(
+        "SELECT * FROM scraper_status WHERE id=1"
+    ).fetchone()
     conn.close()
-    return jsonify([dict(r) for r in rows])
+    
+    scraper_ok = True
+    scraper_msg = "OK"
+    if status_row:
+        scraper_ok = status_row["status"] == "ok"
+        scraper_msg = status_row["message"]
+    
+    return jsonify({
+        "jobs": [dict(r) for r in rows],
+        "scraper_ok": scraper_ok,
+        "scraper_msg": scraper_msg
+    })
+
+@app.route("/api/scraper-status", methods=["POST"])
+def update_scraper_status():
+    data = request.get_json(silent=True)
+    if not data:
+        return jsonify({"error": "no data"}), 400
+    status  = data.get("status", "ok")
+    message = data.get("message", "")
+    now     = datetime.now().isoformat()
+    conn = get_db()
+    conn.execute("""
+        INSERT INTO scraper_status (id, status, message, updated_at)
+        VALUES (1, ?, ?, ?)
+        ON CONFLICT(id) DO UPDATE SET
+            status     = excluded.status,
+            message    = excluded.message,
+            updated_at = excluded.updated_at
+    """, (status, message, now))
+    conn.commit()
+    conn.close()
+    print(f"[STATUS] {status} | {message}")
+    return jsonify({"ok": True})
 
 @app.route("/save", methods=["POST", "OPTIONS"])
 def save_job():
