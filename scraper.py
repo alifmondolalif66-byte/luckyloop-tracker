@@ -33,12 +33,31 @@ def calc_available(pos_str):
     except:
         return "-"
 
+def update_status(status, message):
+    try:
+        requests.post(f"{SERVER_URL}/api/scraper-status", json={
+            "status" : status,
+            "message": message
+        }, timeout=10)
+        print(f"[Status] {status} | {message}")
+    except Exception as e:
+        print(f"[Status Error] {e}")
+
 def scrape_jobs():
     try:
         r = session.get(TARGET_URL, timeout=20)
         soup = BeautifulSoup(r.text, "html.parser")
         listings = soup.select(".jobslist")
-        print(f"[Scraper] Found {len(listings)} listings")
+        count = len(listings)
+        print(f"[Scraper] Found {count} listings")
+
+        if count == 0:
+            # PHPSESSID expire হয়েছে!
+            update_status("expired", "⚠️ PHPSESSID Expired! Render এ নতুন Cookie দিন।")
+            return
+
+        # OK status
+        update_status("ok", f"✅ Running | {count} listings found")
 
         for job in JOB_NAMES:
             for item in listings:
@@ -52,8 +71,10 @@ def scrape_jobs():
                     link      = name_el.get("href", TARGET_URL)
                     push(job["short"], position, available, link)
                     break
+
     except Exception as e:
         print(f"[Scraper] Error: {e}")
+        update_status("error", f"❌ Error: {str(e)[:80]}")
 
 def push(cid, position, available, link):
     try:
@@ -70,15 +91,13 @@ def push(cid, position, available, link):
 def scrape_loop():
     print("[Scraper] Starting — checking at sec 2, 4, 33, 35...")
     time.sleep(5)
-
     CHECK_SECONDS = {2, 4, 33, 35}
     last_checked_sec = -1
-
     while True:
         sec = datetime.now().second
         if sec in CHECK_SECONDS and sec != last_checked_sec:
             last_checked_sec = sec
-            print(f"[Scraper] Checking at second :{sec:02d}")
+            print(f"[Scraper] Checking at :{sec:02d}")
             scrape_jobs()
         time.sleep(0.5)
 
