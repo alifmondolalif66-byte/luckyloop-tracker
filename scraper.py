@@ -3,10 +3,9 @@ import time
 import threading
 import os
 from bs4 import BeautifulSoup
+from datetime import datetime
 
 SERVER_URL = "https://luckyloop-tracker.onrender.com"
-INTERVAL   = 30
-
 PHPSESSID  = os.environ.get("MW_PHPSESSID", "")
 
 JOB_NAMES = [
@@ -39,7 +38,7 @@ def scrape_jobs():
         r = session.get(TARGET_URL, timeout=20)
         soup = BeautifulSoup(r.text, "html.parser")
         listings = soup.select(".jobslist")
-        print(f"[Scraper] Found {len(listings)} job listings")
+        print(f"[Scraper] Found {len(listings)} listings")
 
         for job in JOB_NAMES:
             for item in listings:
@@ -54,7 +53,7 @@ def scrape_jobs():
                     push(job["short"], position, available, link)
                     break
     except Exception as e:
-        print(f"[Scraper] Scrape error: {e}")
+        print(f"[Scraper] Error: {e}")
 
 def push(cid, position, available, link):
     try:
@@ -69,12 +68,19 @@ def push(cid, position, available, link):
         print(f"[Scraper] Push error: {e}")
 
 def scrape_loop():
-    print("[Scraper] Starting with cookie session...")
+    print("[Scraper] Starting — checking at sec 2, 4, 33, 35...")
     time.sleep(5)
+
+    CHECK_SECONDS = {2, 4, 33, 35}
+    last_checked_sec = -1
+
     while True:
-        scrape_jobs()
-        print(f"[Scraper] Sleeping {INTERVAL}s...")
-        time.sleep(INTERVAL)
+        sec = datetime.now().second
+        if sec in CHECK_SECONDS and sec != last_checked_sec:
+            last_checked_sec = sec
+            print(f"[Scraper] Checking at second :{sec:02d}")
+            scrape_jobs()
+        time.sleep(0.5)
 
 def start_scraper():
     t = threading.Thread(target=scrape_loop, daemon=True)
