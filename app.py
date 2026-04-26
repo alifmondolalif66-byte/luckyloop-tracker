@@ -1,15 +1,14 @@
 from flask import Flask, request, jsonify, render_template
+from flask_cors import CORS
 import sqlite3
 from datetime import datetime
 import os
 
 app = Flask(__name__)
+CORS(app)  # Chrome Extension থেকে request allow করবে
 
 DB = os.path.join(os.environ.get("DB_PATH", "."), "jobs.db")
 
-# ─────────────────────────────────────────
-# DATABASE
-# ─────────────────────────────────────────
 def init_db():
     conn = sqlite3.connect(DB)
     c = conn.cursor()
@@ -25,7 +24,6 @@ def init_db():
     """)
     cols = [row[1] for row in c.execute("PRAGMA table_info(jobs)")]
     if "updated_at" not in cols:
-        print("[DB] Migrating: adding 'updated_at' column ...")
         c.execute("ALTER TABLE jobs ADD COLUMN updated_at TEXT")
     conn.commit()
     conn.close()
@@ -36,9 +34,6 @@ def get_db():
     conn.row_factory = sqlite3.Row
     return conn
 
-# ─────────────────────────────────────────
-# ROUTES
-# ─────────────────────────────────────────
 @app.route("/")
 def home():
     return render_template("index.html")
@@ -56,8 +51,11 @@ def api_latest():
     conn.close()
     return jsonify([dict(r) for r in rows])
 
-@app.route("/save", methods=["POST"])
+@app.route("/save", methods=["POST", "OPTIONS"])
 def save_job():
+    if request.method == "OPTIONS":
+        return jsonify({"status": "ok"}), 200
+
     data = request.get_json(silent=True)
     if not data:
         return jsonify({"status": "error", "message": "No JSON body received"}), 400
@@ -87,9 +85,6 @@ def save_job():
     print(f"[SAVED] {job_name}  |  pos={position}  |  avail={available}  |  {now}")
     return jsonify({"status": "saved", "job_name": job_name})
 
-# ─────────────────────────────────────────
-# STARTUP
-# ─────────────────────────────────────────
 init_db()
 
 if __name__ == "__main__":
