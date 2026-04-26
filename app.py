@@ -5,7 +5,7 @@ from datetime import datetime
 import os
 
 app = Flask(__name__)
-CORS(app)  # Chrome Extension থেকে request allow করবে
+CORS(app)
 
 DB = os.path.join(os.environ.get("DB_PATH", "."), "jobs.db")
 
@@ -55,20 +55,16 @@ def api_latest():
 def save_job():
     if request.method == "OPTIONS":
         return jsonify({"status": "ok"}), 200
-
     data = request.get_json(silent=True)
     if not data:
         return jsonify({"status": "error", "message": "No JSON body received"}), 400
-
     job_name  = str(data.get("job_name",  "") or "").strip()
     position  = str(data.get("position",  "") or "").strip()
     available = str(data.get("available", "") or "").strip()
     link      = str(data.get("link",      "") or "").strip()
     now       = datetime.now().isoformat()
-
     if not job_name:
         return jsonify({"status": "error", "message": "job_name is required"}), 400
-
     conn = get_db()
     conn.execute("""
         INSERT INTO jobs (job_name, position, available, link, updated_at)
@@ -81,11 +77,13 @@ def save_job():
     """, (job_name, position, available, link, now))
     conn.commit()
     conn.close()
-
     print(f"[SAVED] {job_name}  |  pos={position}  |  avail={available}  |  {now}")
     return jsonify({"status": "saved", "job_name": job_name})
 
 init_db()
+
+from scraper import start_scraper
+start_scraper()
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
