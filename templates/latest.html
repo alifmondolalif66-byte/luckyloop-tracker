@@ -381,7 +381,10 @@
         try {
             const res  = await fetch('/api/latest');
             if (!res.ok) throw new Error('HTTP ' + res.status);
-            const rows = await res.json();
+
+            // ✅ FIX: API array বা object { jobs: [...] } দুটোই handle করে
+            const data = await res.json();
+            const rows = Array.isArray(data) ? data : (data.jobs || []);
 
             document.getElementById('dot').classList.add('live');
             document.getElementById('liveText').textContent = 'LIVE';
