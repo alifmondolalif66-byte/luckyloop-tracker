@@ -5,10 +5,21 @@ import os
 from bs4 import BeautifulSoup
 
 SERVER_URL = "https://luckyloop-tracker.onrender.com"
-CAMPAIGNS  = ["1033", "1470", "2289", "1891"]
 INTERVAL   = 30
 
 PHPSESSID  = os.environ.get("MW_PHPSESSID", "")
+
+JOB_NAMES = [
+    {"full": "TTV-Data Entry - PC required. Not for mobile phones. (E766-1470)", "short": "1470"},
+    {"full": "TTV-Data Entry from images (E502-1033)",                            "short": "1033"},
+    {"full": "TTV-Data Entry from images (E1096-1891)",                           "short": "1891"},
+    {"full": "TTV-Data Entry from images (E833-1532)",                            "short": "1532"},
+    {"full": "TTV-Data Entry - PC required. Not for mobile phones. (E766-2289)",  "short": "2289"},
+    {"full": "TTV-Data Entry (E766-1469sv)",                                      "short": "1469"},
+    {"full": "TTV-Data Entry from images (E502-1001)",                            "short": "1001"},
+]
+
+TARGET_URL = "https://www.microworkers.com/jobs.php?Filter=no&Sort=NEWEST&Id_category=09"
 
 session = requests.Session()
 session.headers.update({
@@ -16,22 +27,34 @@ session.headers.update({
     "Cookie": f"PHPSESSID={PHPSESSID}"
 })
 
-def get_campaign_data(cid):
+def calc_available(pos_str):
     try:
-        url = f"https://microworkers.com/jobs.php?Filter={cid}"
-        r = session.get(url, timeout=15)
+        cur, total = pos_str.split("/")
+        return str(max(int(total) - int(cur), 0))
+    except:
+        return "-"
+
+def scrape_jobs():
+    try:
+        r = session.get(TARGET_URL, timeout=20)
         soup = BeautifulSoup(r.text, "html.parser")
-        rows = soup.find_all("tr")
-        for row in rows:
-            cells = row.find_all("td")
-            if len(cells) >= 3 and cid in row.get_text():
-                position  = cells[1].get_text(strip=True)
-                available = cells[2].get_text(strip=True)
-                return position, available, url
-        return None, None, None
+        listings = soup.select(".jobslist")
+        print(f"[Scraper] Found {len(listings)} job listings")
+
+        for job in JOB_NAMES:
+            for item in listings:
+                name_el = item.select_one(".jobname a")
+                pos_el  = item.select_one(".jobdone p")
+                if not name_el or not pos_el:
+                    continue
+                if name_el.get_text(strip=True) == job["full"]:
+                    position  = pos_el.get_text(strip=True)
+                    available = calc_available(position)
+                    link      = name_el.get("href", TARGET_URL)
+                    push(job["short"], position, available, link)
+                    break
     except Exception as e:
-        print(f"[Scraper] Campaign {cid} error: {e}")
-        return None, None, None
+        print(f"[Scraper] Scrape error: {e}")
 
 def push(cid, position, available, link):
     try:
@@ -49,11 +72,7 @@ def scrape_loop():
     print("[Scraper] Starting with cookie session...")
     time.sleep(5)
     while True:
-        for cid in CAMPAIGNS:
-            pos, avail, link = get_campaign_data(cid)
-            if pos:
-                push(cid, pos, avail, link)
-            time.sleep(3)
+        scrape_jobs()
         print(f"[Scraper] Sleeping {INTERVAL}s...")
         time.sleep(INTERVAL)
 
