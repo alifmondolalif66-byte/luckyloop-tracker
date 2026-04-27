@@ -26,7 +26,6 @@
             min-height: 100vh;
         }
 
-        /* ── HEADER ────────────────────────────────────────────── */
         header {
             display: flex;
             align-items: center;
@@ -59,7 +58,6 @@
             gap: 18px;
         }
 
-        /* Live dot */
         #liveDot {
             display: flex;
             align-items: center;
@@ -92,7 +90,6 @@
         }
         .upload-link:hover { border-color: var(--green); color: var(--green); }
 
-        /* ── STATS ROW ─────────────────────────────────────────── */
         .stats {
             display: flex;
             gap: 14px;
@@ -123,7 +120,6 @@
             line-height: 1;
         }
 
-        /* ── MAIN CONTENT ──────────────────────────────────────── */
         .content {
             padding: 22px 28px 40px;
         }
@@ -146,7 +142,6 @@
             color: var(--muted);
         }
 
-        /* ── TABLE ─────────────────────────────────────────────── */
         .table-wrap {
             border-radius: 10px;
             border: 1px solid var(--border);
@@ -184,7 +179,6 @@
             vertical-align: middle;
         }
 
-        /* ── BADGES ────────────────────────────────────────────── */
         .badge {
             display: inline-block;
             padding: 3px 13px;
@@ -198,7 +192,6 @@
         .avail-low  { background: #380000; color: #ff6060; }
         .avail-zero { background: #181818; color: #444; }
 
-        /* ── BUTTONS / LINKS ───────────────────────────────────── */
         .open-btn {
             display: inline-block;
             padding: 5px 14px;
@@ -232,7 +225,6 @@
         .pos-cell  { font-weight: bold; color: #ddd; }
         .name-cell { font-weight: bold; color: #ccc; }
 
-        /* ── EMPTY STATE ───────────────────────────────────────── */
         #emptyMsg {
             padding: 60px;
             text-align: center;
@@ -241,7 +233,6 @@
             display: none;
         }
 
-        /* ── TOAST ─────────────────────────────────────────────── */
         #toast {
             position: fixed; bottom: 28px; left: 50%;
             transform: translateX(-50%);
@@ -252,7 +243,6 @@
             pointer-events: none; z-index: 9999;
         }
 
-        /* ── FOOTER ────────────────────────────────────────────── */
         footer {
             text-align: center;
             padding: 22px;
@@ -264,7 +254,6 @@
 </head>
 <body>
 
-<!-- HEADER -->
 <header>
     <div class="brand">
         🔸 LuckyLoop Live Data
@@ -279,7 +268,6 @@
     </div>
 </header>
 
-<!-- STATS -->
 <div class="stats">
     <div class="stat">
         <div class="stat-label">Total Jobs</div>
@@ -299,7 +287,6 @@
     </div>
 </div>
 
-<!-- TABLE -->
 <div class="content">
     <div class="toolbar">
         <div class="section-title">📊 Job Position Tracker</div>
@@ -347,7 +334,10 @@
 
     function timeAgo(iso) {
         if (!iso) return '–';
-        const s = (Date.now() - new Date(iso)) / 1000;
+        // ✅ FIX: Python isoformat() → "2024-01-15T14:27:24.123456"
+        // Browser সঠিকভাবে parse করার জন্য space→T এবং microsecond বাদ দিয়ে Z যোগ
+        const fixed = iso.replace(' ', 'T').split('.')[0] + 'Z';
+        const s = (Date.now() - new Date(fixed)) / 1000;
         if (s < 10)    return 'just now';
         if (s < 60)    return Math.floor(s) + 's ago';
         if (s < 3600)  return Math.floor(s / 60) + ' min ago';
@@ -382,7 +372,6 @@
             const res  = await fetch('/api/latest');
             if (!res.ok) throw new Error('HTTP ' + res.status);
 
-            // ✅ FIX: API array বা object { jobs: [...] } দুটোই handle করে
             const data = await res.json();
             const rows = Array.isArray(data) ? data : (data.jobs || []);
 
