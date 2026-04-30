@@ -52,11 +52,9 @@ def scrape_jobs():
         print(f"[Scraper] Found {count} listings")
 
         if count == 0:
-            # PHPSESSID expire হয়েছে!
             update_status("expired", "⚠️ PHPSESSID Expired! Render এ নতুন Cookie দিন।")
             return
 
-        # OK status
         update_status("ok", f"✅ Running | {count} listings found")
 
         for job in JOB_NAMES:
