@@ -552,36 +552,48 @@
 
   // ── API CALLS ─────────────────────────────────────────
   function blockDevice(deviceId, reason) {
-    fetch(`${BASE}/api/admin/block`, {
+    fetch(`${BASE}/api/admin/block?password=${encodeURIComponent(adminPw)}`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-Admin-Password': adminPw },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ device_id: deviceId, reason })
     })
     .then(r => r.json())
-    .then(() => { showToast('🚫 Device block করা হয়েছে'); loadDevices(); })
+    .then(d => {
+      if (d.error) { showToast('❌ ' + d.error, true); return; }
+      showToast('🚫 Device block করা হয়েছে');
+      loadDevices();
+    })
     .catch(() => showToast('❌ Error হয়েছে', true));
   }
 
   function unblockDevice(deviceId) {
-    fetch(`${BASE}/api/admin/unblock`, {
+    fetch(`${BASE}/api/admin/unblock?password=${encodeURIComponent(adminPw)}`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-Admin-Password': adminPw },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ device_id: deviceId })
     })
     .then(r => r.json())
-    .then(() => { showToast('✅ Device unblock করা হয়েছে'); loadDevices(); })
+    .then(d => {
+      if (d.error) { showToast('❌ ' + d.error, true); return; }
+      showToast('✅ Device unblock করা হয়েছে');
+      loadDevices();
+    })
     .catch(() => showToast('❌ Error হয়েছে', true));
   }
 
   function deleteDevice(deviceId) {
     if (!confirm('এই device টা permanently delete করবেন?')) return;
-    fetch(`${BASE}/api/admin/delete`, {
+    fetch(`${BASE}/api/admin/delete?password=${encodeURIComponent(adminPw)}`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-Admin-Password': adminPw },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ device_id: deviceId })
     })
     .then(r => r.json())
-    .then(() => { showToast('🗑 Device delete করা হয়েছে'); loadDevices(); })
+    .then(d => {
+      if (d.error) { showToast('❌ ' + d.error, true); return; }
+      showToast('🗑 Device delete করা হয়েছে');
+      loadDevices();
+    })
     .catch(() => showToast('❌ Error হয়েছে', true));
   }
 
