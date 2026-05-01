@@ -446,7 +446,7 @@
     const online  = devices.filter(d => {
       if (!d.last_seen) return false;
       const diff = (now - new Date(d.last_seen).getTime()) / 1000;
-      return diff < 300; // 5 minutes
+      return diff < 300;
     }).length;
     document.getElementById('stat-total').textContent   = total;
     document.getElementById('stat-active').textContent  = active;
@@ -466,7 +466,6 @@
         (d.device_id   || '').toLowerCase().includes(q) ||
         (d.license_key || '').toLowerCase().includes(q);
       if (!matchQ) return false;
-
       if (filter === 'blocked') return d.is_blocked;
       if (filter === 'active')  return !d.is_blocked;
       if (filter === 'online') {
@@ -491,9 +490,14 @@
         ? `<span class="badge blocked"><span class="badge-dot"></span>BLOCKED</span>`
         : `<span class="badge active"><span class="badge-dot"></span>ACTIVE</span>`;
 
+      // ✅ FIX: JSON.stringify দিয়ে device_id এবং device_name safely pass করা হচ্ছে
+      // এতে single quote, special character কোনো সমস্যা করবে না
+      const safeId   = JSON.stringify(d.device_id   || '');
+      const safeName = JSON.stringify(d.device_name || 'Unknown');
+
       const actionBtn = d.is_blocked
-        ? `<button class="btn-unblock" onclick="unblockDevice('${d.device_id}')">✓ Unblock</button>`
-        : `<button class="btn-block"   onclick="openBlockModal('${d.device_id}', '${escHtml(d.device_name)}')">✕ Block</button>`;
+        ? `<button class="btn-unblock" onclick="unblockDevice(${safeId})">✓ Unblock</button>`
+        : `<button class="btn-block"   onclick="openBlockModal(${safeId}, ${safeName})">✕ Block</button>`;
 
       const blockReasonHtml = d.is_blocked && d.block_reason
         ? `<div style="font-size:10px;color:var(--red);margin-top:3px">💬 ${escHtml(d.block_reason)}</div>`
@@ -506,7 +510,7 @@
             <span class="online-dot ${isOnline?'yes':'no'}"></span>
             <div>
               <div class="device-name">${escHtml(d.device_name || 'Unknown')}</div>
-              <div class="device-id">${d.device_id || '—'}</div>
+              <div class="device-id">${escHtml(d.device_id || '—')}</div>
               ${blockReasonHtml}
             </div>
           </div>
@@ -520,7 +524,7 @@
         <td>${statusBadge}</td>
         <td style="display:flex;align-items:center;flex-wrap:wrap;gap:4px">
           ${actionBtn}
-          <button class="btn-delete" onclick="deleteDevice('${d.device_id}')" title="Delete">🗑</button>
+          <button class="btn-delete" onclick="deleteDevice(${safeId})" title="Delete">🗑</button>
         </td>
       </tr>`;
     }).join('');
@@ -528,22 +532,35 @@
 
   // ── BLOCK MODAL ───────────────────────────────────────
   function openBlockModal(deviceId, deviceName) {
+    // ✅ FIX: এখন deviceId সরাসরি JS value হিসেবে আসছে, string manipulation নেই
+    if (!deviceId) {
+      showToast('❌ Device ID পাওয়া যায়নি!', true);
+      return;
+    }
     pendingBlockId = deviceId;
-    document.getElementById('modal-device-info').textContent = 'Device: ' + deviceName + ' (' + deviceId + ')';
+    document.getElementById('modal-device-info').textContent =
+      'Device: ' + (deviceName || 'Unknown') + ' (' + deviceId + ')';
     document.getElementById('block-reason-input').value = '';
     document.getElementById('block-modal').classList.add('open');
     setTimeout(() => document.getElementById('block-reason-input').focus(), 100);
   }
+
   function closeModal() {
     document.getElementById('block-modal').classList.remove('open');
     pendingBlockId = '';
   }
+
   document.getElementById('block-reason-input').addEventListener('keydown', e => {
     if (e.key === 'Enter') confirmBlock();
     if (e.key === 'Escape') closeModal();
   });
 
   function confirmBlock() {
+    if (!pendingBlockId) {
+      showToast('❌ Device ID missing!', true);
+      closeModal();
+      return;
+    }
     const reason = document.getElementById('block-reason-input').value.trim()
       || 'Admin কর্তৃক block করা হয়েছে';
     closeModal();
@@ -552,10 +569,14 @@
 
   // ── API CALLS ─────────────────────────────────────────
   function blockDevice(deviceId, reason) {
+    if (!deviceId) {
+      showToast('❌ device_id required!', true);
+      return;
+    }
     fetch(`${BASE}/api/admin/block?password=${encodeURIComponent(adminPw)}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ device_id: deviceId, reason })
+      body: JSON.stringify({ device_id: deviceId, reason: reason })
     })
     .then(r => r.json())
     .then(d => {
@@ -567,6 +588,10 @@
   }
 
   function unblockDevice(deviceId) {
+    if (!deviceId) {
+      showToast('❌ device_id required!', true);
+      return;
+    }
     fetch(`${BASE}/api/admin/unblock?password=${encodeURIComponent(adminPw)}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -582,6 +607,10 @@
   }
 
   function deleteDevice(deviceId) {
+    if (!deviceId) {
+      showToast('❌ device_id required!', true);
+      return;
+    }
     if (!confirm('এই device টা permanently delete করবেন?')) return;
     fetch(`${BASE}/api/admin/delete?password=${encodeURIComponent(adminPw)}`, {
       method: 'POST',
