@@ -490,14 +490,11 @@
         ? `<span class="badge blocked"><span class="badge-dot"></span>BLOCKED</span>`
         : `<span class="badge active"><span class="badge-dot"></span>ACTIVE</span>`;
 
-      // ✅ FIX: JSON.stringify দিয়ে device_id এবং device_name safely pass করা হচ্ছে
-      // এতে single quote, special character কোনো সমস্যা করবে না
-      const safeId   = JSON.stringify(d.device_id   || '');
-      const safeName = JSON.stringify(d.device_name || 'Unknown');
-
+      // ✅ FIX: data-attribute দিয়ে device_id এবং device_name pass করা হচ্ছে
+      // onclick এ কোনো parameter নেই — button নিজেই data থেকে পড়বে
       const actionBtn = d.is_blocked
-        ? `<button class="btn-unblock" onclick="unblockDevice(${safeId})">✓ Unblock</button>`
-        : `<button class="btn-block"   onclick="openBlockModal(${safeId}, ${safeName})">✕ Block</button>`;
+        ? `<button class="btn-unblock" data-id="${escHtml(d.device_id||'')}" onclick="unblockDevice(this.dataset.id)">✓ Unblock</button>`
+        : `<button class="btn-block" data-id="${escHtml(d.device_id||'')}" data-name="${escHtml(d.device_name||'Unknown')}" onclick="openBlockModal(this.dataset.id, this.dataset.name)">✕ Block</button>`;
 
       const blockReasonHtml = d.is_blocked && d.block_reason
         ? `<div style="font-size:10px;color:var(--red);margin-top:3px">💬 ${escHtml(d.block_reason)}</div>`
@@ -524,7 +521,7 @@
         <td>${statusBadge}</td>
         <td style="display:flex;align-items:center;flex-wrap:wrap;gap:4px">
           ${actionBtn}
-          <button class="btn-delete" onclick="deleteDevice(${safeId})" title="Delete">🗑</button>
+          <button class="btn-delete" data-id="${escHtml(d.device_id||'')}" onclick="deleteDevice(this.dataset.id)" title="Delete">🗑</button>
         </td>
       </tr>`;
     }).join('');
