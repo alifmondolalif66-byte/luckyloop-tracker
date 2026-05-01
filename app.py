@@ -9,6 +9,9 @@ CORS(app)
 
 DB = os.path.join(os.environ.get("DB_PATH", "."), "jobs.db")
 
+# ── Admin password (change this!) ──────────────────────────
+ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "luckyloop_admin_2024")
+
 def init_db():
     conn = sqlite3.connect(DB)
     c = conn.cursor()
@@ -30,6 +33,20 @@ def init_db():
             updated_at TEXT
         )
     """)
+    # ── NEW: devices table ──────────────────────────────────
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS devices (
+            device_id    TEXT PRIMARY KEY,
+            device_name  TEXT,
+            license_key  TEXT,
+            license_type TEXT,
+            ip_address   TEXT,
+            first_seen   TEXT,
+            last_seen    TEXT,
+            is_blocked   INTEGER DEFAULT 0,
+            block_reason TEXT
+        )
+    """)
     cols = [row[1] for row in c.execute("PRAGMA table_info(jobs)")]
     if "updated_at" not in cols:
         c.execute("ALTER TABLE jobs ADD COLUMN updated_at TEXT")
@@ -41,6 +58,10 @@ def get_db():
     conn = sqlite3.connect(DB)
     conn.row_factory = sqlite3.Row
     return conn
+
+# ══════════════════════════════════════════════════════════
+#  EXISTING ROUTES (unchanged)
+# ══════════════════════════════════════════════════════════
 
 @app.route("/")
 def home():
@@ -56,19 +77,15 @@ def api_latest():
     rows = conn.execute(
         "SELECT * FROM jobs ORDER BY updated_at DESC"
     ).fetchall()
-    
-    # scraper status
     status_row = conn.execute(
         "SELECT * FROM scraper_status WHERE id=1"
     ).fetchone()
     conn.close()
-    
     scraper_ok = True
     scraper_msg = "OK"
     if status_row:
         scraper_ok = status_row["status"] == "ok"
         scraper_msg = status_row["message"]
-    
     return jsonify({
         "jobs": [dict(r) for r in rows],
         "scraper_ok": scraper_ok,
@@ -126,6 +143,168 @@ def save_job():
     print(f"[SAVED] {job_name}  |  pos={position}  |  avail={available}  |  {now}")
     return jsonify({"status": "saved", "job_name": job_name})
 
+
+# ══════════════════════════════════════════════════════════
+#  NEW: DEVICE MANAGEMENT ROUTES
+# ══════════════════════════════════════════════════════════
+
+@app.route("/api/heartbeat", methods=["POST"])
+def heartbeat():
+    """Python app startup এ call করবে — device register করে"""
+    data = request.get_json(silent=True)
+    if not data:
+        return jsonify({"ok": False, "blocked": False}), 400
+
+    device_id   = str(data.get("device_id",   "") or "").strip()
+    device_name = str(data.get("device_name", "") or "Unknown").strip()
+    license_key = str(data.get("license_key", "") or "").strip()
+    license_type = str(data.get("license_type", "") or "").strip()
+    ip_address  = request.headers.get("X-Forwarded-For", request.remote_addr or "")
+    now         = datetime.now().isoformat()
+
+    if not device_id:
+        return jsonify({"ok": False, "blocked": False, "reason": "no device_id"}), 400
+
+    conn = get_db()
+    existing = conn.execute(
+        "SELECT * FROM devices WHERE device_id=?", (device_id,)
+    ).fetchone()
+
+    if existing:
+        # Update last seen + info, but don't change block status
+        conn.execute("""
+            UPDATE devices SET
+                device_name  = ?,
+                license_key  = ?,
+                license_type = ?,
+                ip_address   = ?,
+                last_seen    = ?
+            WHERE device_id = ?
+        """, (device_name, license_key, license_type, ip_address, now, device_id))
+        is_blocked = bool(existing["is_blocked"])
+        block_reason = existing["block_reason"] or ""
+    else:
+        # New device — register
+        conn.execute("""
+            INSERT INTO devices
+                (device_id, device_name, license_key, license_type, ip_address, first_seen, last_seen, is_blocked)
+            VALUES (?, ?, ?, ?, ?, ?, ?, 0)
+        """, (device_id, device_name, license_key, license_type, ip_address, now, now))
+        is_blocked   = False
+        block_reason = ""
+
+    conn.commit()
+    conn.close()
+
+    if is_blocked:
+        print(f"[BLOCKED] {device_name} ({device_id}) tried to connect")
+        return jsonify({"ok": False, "blocked": True, "reason": block_reason or "আপনার device block করা হয়েছে।"})
+
+    print(f"[HEARTBEAT] {device_name} ({device_id})")
+    return jsonify({"ok": True, "blocked": False})
+
+
+@app.route("/api/check/<device_id>", methods=["GET"])
+def check_device(device_id):
+    """App চলার সময় বারবার call করবে — blocked কিনা check করতে"""
+    conn = get_db()
+    row = conn.execute(
+        "SELECT is_blocked, block_reason FROM devices WHERE device_id=?", (device_id,)
+    ).fetchone()
+    conn.close()
+
+    if not row:
+        return jsonify({"ok": True, "blocked": False})
+
+    if row["is_blocked"]:
+        return jsonify({
+            "ok": False,
+            "blocked": True,
+            "reason": row["block_reason"] or "আপনার device block করা হয়েছে।"
+        })
+
+    return jsonify({"ok": True, "blocked": False})
+
+
+# ══════════════════════════════════════════════════════════
+#  NEW: ADMIN ROUTES
+# ══════════════════════════════════════════════════════════
+
+def check_admin(req):
+    """Simple password check via header or query param"""
+    pw = req.headers.get("X-Admin-Password") or req.args.get("password") or ""
+    return pw == ADMIN_PASSWORD
+
+@app.route("/admin")
+def admin_panel():
+    """Admin panel page"""
+    return render_template("admin.html")
+
+@app.route("/api/admin/devices", methods=["GET"])
+def admin_get_devices():
+    if not check_admin(request):
+        return jsonify({"error": "Unauthorized"}), 401
+    conn = get_db()
+    rows = conn.execute(
+        "SELECT * FROM devices ORDER BY last_seen DESC"
+    ).fetchall()
+    conn.close()
+    return jsonify([dict(r) for r in rows])
+
+@app.route("/api/admin/block", methods=["POST"])
+def admin_block():
+    if not check_admin(request):
+        return jsonify({"error": "Unauthorized"}), 401
+    data = request.get_json(silent=True) or {}
+    device_id = str(data.get("device_id", "") or "").strip()
+    reason    = str(data.get("reason", "Admin কর্তৃক block করা হয়েছে") or "").strip()
+    if not device_id:
+        return jsonify({"error": "device_id required"}), 400
+    conn = get_db()
+    conn.execute(
+        "UPDATE devices SET is_blocked=1, block_reason=? WHERE device_id=?",
+        (reason, device_id)
+    )
+    conn.commit()
+    conn.close()
+    print(f"[ADMIN] BLOCKED: {device_id} | reason: {reason}")
+    return jsonify({"ok": True, "blocked": True})
+
+@app.route("/api/admin/unblock", methods=["POST"])
+def admin_unblock():
+    if not check_admin(request):
+        return jsonify({"error": "Unauthorized"}), 401
+    data = request.get_json(silent=True) or {}
+    device_id = str(data.get("device_id", "") or "").strip()
+    if not device_id:
+        return jsonify({"error": "device_id required"}), 400
+    conn = get_db()
+    conn.execute(
+        "UPDATE devices SET is_blocked=0, block_reason='' WHERE device_id=?",
+        (device_id,)
+    )
+    conn.commit()
+    conn.close()
+    print(f"[ADMIN] UNBLOCKED: {device_id}")
+    return jsonify({"ok": True, "blocked": False})
+
+@app.route("/api/admin/delete", methods=["POST"])
+def admin_delete():
+    if not check_admin(request):
+        return jsonify({"error": "Unauthorized"}), 401
+    data = request.get_json(silent=True) or {}
+    device_id = str(data.get("device_id", "") or "").strip()
+    if not device_id:
+        return jsonify({"error": "device_id required"}), 400
+    conn = get_db()
+    conn.execute("DELETE FROM devices WHERE device_id=?", (device_id,))
+    conn.commit()
+    conn.close()
+    print(f"[ADMIN] DELETED: {device_id}")
+    return jsonify({"ok": True})
+
+
+# ══════════════════════════════════════════════════════════
 init_db()
 
 from scraper import start_scraper
