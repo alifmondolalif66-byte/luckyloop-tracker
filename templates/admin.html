@@ -455,12 +455,14 @@
   }
 
   // ── RENDER TABLE ──────────────────────────────────────
+  let currentList = []; // global — onclick index দিয়ে access করবে
+
   function renderTable() {
     const q      = document.getElementById('search-box').value.toLowerCase();
     const filter = document.getElementById('filter-status').value;
     const now    = Date.now();
 
-    let list = allDevices.filter(d => {
+    currentList = allDevices.filter(d => {
       const matchQ = !q ||
         (d.device_name || '').toLowerCase().includes(q) ||
         (d.device_id   || '').toLowerCase().includes(q) ||
@@ -476,55 +478,67 @@
     });
 
     const tbody = document.getElementById('device-table-body');
-    if (!list.length) {
+    if (!currentList.length) {
       tbody.innerHTML = '<tr class="empty-row"><td colspan="8">কোনো device পাওয়া যায়নি।</td></tr>';
       return;
     }
 
-    tbody.innerHTML = list.map((d, i) => {
+    tbody.innerHTML = currentList.map((d, i) => {
       const isOnline = d.last_seen
         ? (now - new Date(d.last_seen).getTime()) / 1000 < 300
         : false;
 
       const statusBadge = d.is_blocked
-        ? `<span class="badge blocked"><span class="badge-dot"></span>BLOCKED</span>`
-        : `<span class="badge active"><span class="badge-dot"></span>ACTIVE</span>`;
+        ? '<span class="badge blocked"><span class="badge-dot"></span>BLOCKED</span>'
+        : '<span class="badge active"><span class="badge-dot"></span>ACTIVE</span>';
 
-      // ✅ FIX: data-attribute দিয়ে device_id এবং device_name pass করা হচ্ছে
-      // onclick এ কোনো parameter নেই — button নিজেই data থেকে পড়বে
+      // ✅ FIX: index দিয়ে currentList থেকে device নেওয়া হচ্ছে
+      // onclick এ শুধু number — কোনো string/quote সমস্যা নেই
       const actionBtn = d.is_blocked
-        ? `<button class="btn-unblock" data-id="${escHtml(d.device_id||'')}" onclick="unblockDevice(this.dataset.id)">✓ Unblock</button>`
-        : `<button class="btn-block" data-id="${escHtml(d.device_id||'')}" data-name="${escHtml(d.device_name||'Unknown')}" onclick="openBlockModal(this.dataset.id, this.dataset.name)">✕ Block</button>`;
+        ? '<button class="btn-unblock" onclick="unblockByIndex(' + i + ')">✓ Unblock</button>'
+        : '<button class="btn-block" onclick="openBlockByIndex(' + i + ')">✕ Block</button>';
 
       const blockReasonHtml = d.is_blocked && d.block_reason
-        ? `<div style="font-size:10px;color:var(--red);margin-top:3px">💬 ${escHtml(d.block_reason)}</div>`
+        ? '<div style="font-size:10px;color:var(--red);margin-top:3px">💬 ' + escHtml(d.block_reason) + '</div>'
         : '';
 
-      return `<tr>
-        <td style="color:var(--muted);font-size:11px">${i+1}</td>
-        <td>
-          <div style="display:flex;align-items:center;gap:8px">
-            <span class="online-dot ${isOnline?'yes':'no'}"></span>
-            <div>
-              <div class="device-name">${escHtml(d.device_name || 'Unknown')}</div>
-              <div class="device-id">${escHtml(d.device_id || '—')}</div>
-              ${blockReasonHtml}
-            </div>
-          </div>
-        </td>
-        <td>
-          <span class="license-tag">${escHtml((d.license_type||'').split('(')[0].trim() || 'Unknown')}</span>
-        </td>
-        <td class="device-ip">${escHtml(d.ip_address || '—')}</td>
-        <td style="color:var(--muted);font-size:11px">${fmtTime(d.first_seen)}</td>
-        <td style="color:${isOnline?'var(--green)':'var(--muted)'};font-size:11px">${fmtAgo(d.last_seen)}</td>
-        <td>${statusBadge}</td>
-        <td style="display:flex;align-items:center;flex-wrap:wrap;gap:4px">
-          ${actionBtn}
-          <button class="btn-delete" data-id="${escHtml(d.device_id||'')}" onclick="deleteDevice(this.dataset.id)" title="Delete">🗑</button>
-        </td>
-      </tr>`;
+      return '<tr>'
+        + '<td style="color:var(--muted);font-size:11px">' + (i+1) + '</td>'
+        + '<td><div style="display:flex;align-items:center;gap:8px">'
+        + '<span class="online-dot ' + (isOnline?'yes':'no') + '"></span>'
+        + '<div>'
+        + '<div class="device-name">' + escHtml(d.device_name || 'Unknown') + '</div>'
+        + '<div class="device-id">' + escHtml(d.device_id || '—') + '</div>'
+        + blockReasonHtml
+        + '</div></div></td>'
+        + '<td><span class="license-tag">' + escHtml((d.license_type||'').split('(')[0].trim() || 'Unknown') + '</span></td>'
+        + '<td class="device-ip">' + escHtml(d.ip_address || '—') + '</td>'
+        + '<td style="color:var(--muted);font-size:11px">' + fmtTime(d.first_seen) + '</td>'
+        + '<td style="color:' + (isOnline?'var(--green)':'var(--muted)') + ';font-size:11px">' + fmtAgo(d.last_seen) + '</td>'
+        + '<td>' + statusBadge + '</td>'
+        + '<td style="display:flex;align-items:center;flex-wrap:wrap;gap:4px">'
+        + actionBtn
+        + '<button class="btn-delete" onclick="deleteByIndex(' + i + ')" title="Delete">🗑</button>'
+        + '</td>'
+        + '</tr>';
     }).join('');
+  }
+
+  // index-based wrappers
+  function openBlockByIndex(i) {
+    const d = currentList[i];
+    if (!d) { showToast('❌ Device not found!', true); return; }
+    openBlockModal(d.device_id, d.device_name);
+  }
+  function unblockByIndex(i) {
+    const d = currentList[i];
+    if (!d) { showToast('❌ Device not found!', true); return; }
+    unblockDevice(d.device_id);
+  }
+  function deleteByIndex(i) {
+    const d = currentList[i];
+    if (!d) { showToast('❌ Device not found!', true); return; }
+    deleteDevice(d.device_id);
   }
 
   // ── BLOCK MODAL ───────────────────────────────────────
