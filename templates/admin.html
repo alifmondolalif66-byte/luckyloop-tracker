@@ -567,7 +567,11 @@
   });
 
   function confirmBlock() {
-    if (!pendingBlockId) {
+    // modal এর input থেকে device_id পড়ি — pendingBlockId এর উপর নির্ভর না করে
+    const info = document.getElementById('modal-device-info').textContent;
+    const match = info.match(/\(([^)]+)\)$/);
+    const deviceId = match ? match[1].trim() : pendingBlockId;
+    if (!deviceId) {
       showToast('❌ Device ID missing!', true);
       closeModal();
       return;
@@ -575,7 +579,7 @@
     const reason = document.getElementById('block-reason-input').value.trim()
       || 'Admin কর্তৃক block করা হয়েছে';
     closeModal();
-    blockDevice(pendingBlockId, reason);
+    blockDevice(deviceId, reason);
   }
 
   // ── API CALLS ─────────────────────────────────────────
